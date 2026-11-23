@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime
+from fpdf import FPDF
 
 # ==============================================================================
 # CONFIGURATION DE LA PAGE
@@ -21,6 +22,127 @@ COLONNES_SHEET = [
     "Type", "Mesures_Elec", "Mesures_Pneu", "Compteur_h",
     "Anomalies", "Correction_Effectuee", "Etat_Machine", "Statut"
 ]
+
+# ==============================================================================
+# GÉNÉRATION DU RAPPORT PDF (POUR DOSSIER UAA5 ÉLÈVE)
+# ==============================================================================
+def nettoyer_pdf(texte):
+    """Nettoie les emojis et caractères spéciaux pour compatibilité PDF latin-1."""
+    if texte is None:
+        return ""
+    s = str(texte)
+    remplacements = {
+        "🟢": "[OK]",
+        "🟠": "[RESERVE]",
+        "🔴": "[HORS SERVICE]",
+        "⏳": "[EN ATTENTE]",
+        "✔️": "[VALIDE]",
+        "⚠️": "[!]",
+        "—": "-",
+        "–": "-",
+        "’": "'",
+        "œ": "oe",
+        "Œ": "OE"
+    }
+    for k, v in remplacements.items():
+        s = s.replace(k, v)
+    return s.encode("latin-1", errors="replace").decode("latin-1")
+
+
+def generer_pdf_ot(ot):
+    """Génère un fichier PDF A4 formaté pour le dossier UAA5 de l'élève."""
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    # Bandeau d'en-tête bleu industriel
+    pdf.set_fill_color(27, 54, 93)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 11, nettoyer_pdf("RAPPORT D'INTERVENTION GMAO - MAINTENANCE PREVENTIVE"), ln=True, align="C", fill=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(0, 7, nettoyer_pdf("Option EMI - College Notre-Dame Dinant - Mr PIRET (Referentiel UAA5)"), ln=True, align="C", fill=True)
+    pdf.ln(6)
+
+    # Identification de l'OT
+    pdf.set_text_color(27, 54, 93)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 8, nettoyer_pdf(f"ORDRE DE TRAVAIL : {ot.get('ID_OT', '')}"), ln=True)
+    pdf.set_draw_color(27, 54, 93)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(3)
+
+    pdf.set_text_color(30, 30, 30)
+    infos = [
+        ("Date d'intervention :", ot.get("Date", "")),
+        ("Equipement concerne :", ot.get("Machine", "")),
+        ("Cadre pedagogique :", ot.get("Cadre", "")),
+        ("Intervenant (Eleve) :", f"{ot.get('Email_Eleve', '')}  (Classe : {ot.get('Classe', '')})"),
+        ("Compteur horaire :", str(ot.get("Compteur_h", "N/A"))),
+        ("Validation GMAO :", ot.get("Statut", ""))
+    ]
+    for label, val in infos:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(52, 7, nettoyer_pdf(label), border=0)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(0, 7, nettoyer_pdf(val), ln=True)
+
+    pdf.ln(4)
+
+    # Section Relevés métrologiques
+    pdf.set_text_color(27, 54, 93)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 8, nettoyer_pdf("1. RELEVES METROLOGIQUES & CONTROLES"), ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(3)
+
+    pdf.set_text_color(30, 30, 30)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, nettoyer_pdf("Controles electriques et thermiques :"), ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.multi_cell(0, 6, nettoyer_pdf(ot.get("Mesures_Elec", "N/A")), border=1)
+    pdf.ln(2)
+
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, nettoyer_pdf("Controles pneumatiques et hydrauliques :"), ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.multi_cell(0, 6, nettoyer_pdf(ot.get("Mesures_Pneu", "N/A")), border=1)
+    pdf.ln(5)
+
+    # Section Diagnostic, Anomalies et Remise en service
+    pdf.set_text_color(27, 54, 93)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 8, nettoyer_pdf("2. DIAGNOSTIC, ACTION CORRECTIVE & REMISE EN SERVICE"), ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(3)
+
+    pdf.set_text_color(30, 30, 30)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, nettoyer_pdf("Anomalie(s) constatee(s) / Pieces a prevoir :"), ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.multi_cell(0, 6, nettoyer_pdf(ot.get("Anomalies", "RAS")), border=1)
+    pdf.ln(2)
+
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, nettoyer_pdf("Action corrective realisee sur place :"), ln=True)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.multi_cell(0, 6, nettoyer_pdf(ot.get("Correction_Effectuee", "Aucune")), border=1)
+    pdf.ln(3)
+
+    pdf.set_fill_color(235, 242, 248)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 9, nettoyer_pdf(f"  STATUT FINAL DE L'EQUIPEMENT : {ot.get('Etat_Machine', '')}"), border=1, ln=True, fill=True)
+    pdf.ln(10)
+
+    # Encadrés de signatures pour le dossier papier
+    y_sig = pdf.get_y()
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(90, 22, nettoyer_pdf(" Signature de l'eleve :"), border=1, align="L")
+    pdf.cell(10, 22, "", border=0)
+    pdf.cell(90, 22, nettoyer_pdf(" Visa Professeur (Mr Piret) - Dossier UAA5 :"), border=1, align="L")
+
+    return bytes(pdf.output())
+
 
 # ==============================================================================
 # CONNEXION GOOGLE SHEETS (AVEC REPLI EN MÉMOIRE LOCALE)
@@ -108,7 +230,7 @@ with st.sidebar:
     menu = st.radio(
         "Navigation",
         [
-            "📊 Tableau de bord & Parc",
+            "📊 Tableau de bord & Rapports PDF",
             "🛠️ Maintenance Préventive (UAA5)",
             "🚨 Maintenance Curative (À venir)",
             "🔌 Réalisation & Câblage (À venir)",
@@ -118,13 +240,13 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Équipement UAA5")
-    st.markdown(f"**UAA5-CANARDS-01** : Course de canards")
+    st.markdown("**UAA5-CANARDS-01** : Course de canards")
     st.markdown(f"État actuel : **{etat_actuel_machine}**")
 
 # ==============================================================================
-# VUE 1 : TABLEAU DE BORD & REGISTRE DES ORDRES DE TRAVAIL
+# VUE 1 : TABLEAU DE BORD & CONSULTATION / EXPORT PDF DES OT
 # ==============================================================================
-if menu == "📊 Tableau de bord & Parc":
+if menu == "📊 Tableau de bord & Rapports PDF":
     st.header("Tableau de bord de maintenance — Course de canards")
 
     nb_total = len(ordres_travail)
@@ -139,12 +261,78 @@ if menu == "📊 Tableau de bord & Parc":
     c4.metric("Anomalies détectées & corrigées", nb_corrigees)
 
     st.divider()
-    st.subheader("📋 Historique des interventions & traçabilité des anomalies")
-    if ordres_travail:
-        df = pd.DataFrame(ordres_travail)
-        st.dataframe(df, use_container_width=True, hide_index=True)
-    else:
+
+    if not ordres_travail:
         st.info("Aucun Ordre de Travail enregistré pour le moment.")
+    else:
+        # 1. FICHE DÉTAILLÉE & EXPORT PDF (SANS ASCENSEUR HORIZONTAL)
+        st.subheader("📄 Consulter ou imprimer une fiche d'intervention (Dossier UAA5)")
+
+        options_ot = [
+            f"{ot.get('ID_OT', '')} — {ot.get('Email_Eleve', '')} ({ot.get('Date', '')}) [{ot.get('Statut', '')}]"
+            for ot in ordres_travail
+        ]
+        # Sélectionne automatiquement l'intervention la plus récente
+        choix_index = st.selectbox(
+            "Sélectionnez l'intervention à afficher :",
+            range(len(options_ot)),
+            index=len(options_ot) - 1,
+            format_func=lambda i: options_ot[i]
+        )
+        ot_sel = ordres_travail[choix_index]
+
+        with st.container(border=True):
+            top_l, top_r = st.columns([3, 1])
+            with top_l:
+                st.markdown(f"### {ot_sel.get('ID_OT', '')} • {ot_sel.get('Machine', '')}")
+                st.markdown(
+                    f"**Élève :** `{ot_sel.get('Email_Eleve', '')}` ({ot_sel.get('Classe', '')})  |  "
+                    f"**Date :** {ot_sel.get('Date', '')}  |  "
+                    f"**Cadre :** {ot_sel.get('Cadre', '')}"
+                )
+            with top_r:
+                pdf_bytes = generer_pdf_ot(ot_sel)
+                nom_fichier = f"{ot_sel.get('ID_OT', 'OT')}_{ot_sel.get('Email_Eleve', 'eleve').split('@')[0]}.pdf"
+                st.download_button(
+                    label="📄 Télécharger PDF (UAA5)",
+                    data=pdf_bytes,
+                    file_name=nom_fichier,
+                    mime="application/pdf",
+                    type="primary",
+                    use_container_width=True
+                )
+
+            st.divider()
+
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                st.markdown("**⚡ Relevés Électriques & Thermiques**")
+                st.info(ot_sel.get("Mesures_Elec", "N/A"))
+            with col_m2:
+                st.markdown("**💨 Relevés Pneumatiques & Compteur**")
+                st.info(f"{ot_sel.get('Mesures_Pneu', 'N/A')}  |  **Compteur :** {ot_sel.get('Compteur_h', 'N/A')}")
+
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                st.markdown("**🔍 Anomalie(s) constatée(s)**")
+                anom = str(ot_sel.get("Anomalies", "RAS"))
+                if anom == "RAS":
+                    st.success("RAS (Aucune anomalie détectée)")
+                else:
+                    st.warning(anom)
+            with col_d2:
+                st.markdown("**🔧 Action corrective réalisée sur place**")
+                st.write(ot_sel.get("Correction_Effectuee", "Aucune"))
+
+            st.markdown(f"**État final de la machine :** {ot_sel.get('Etat_Machine', 'N/A')}   •   **Validation :** {ot_sel.get('Statut', '')}")
+
+        st.divider()
+
+        # 2. VUE SYNTHÉTIQUE COMPACTE (TIENS SUR L'ÉCRAN SANS SCROLL)
+        st.subheader("📋 Liste synthétique des interventions")
+        df_complet = pd.DataFrame(ordres_travail)
+        cols_compactes = [c for c in ["ID_OT", "Date", "Email_Eleve", "Classe", "Cadre", "Statut"] if c in df_complet.columns]
+        st.dataframe(df_complet[cols_compactes], use_container_width=True, hide_index=True)
 
 # ==============================================================================
 # VUE 2 : MAINTENANCE PRÉVENTIVE (FICHE UAA5)
