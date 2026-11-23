@@ -20,7 +20,7 @@ MACHINE_UAA5 = "Course de canards (UAA5-CANARDS-01)"
 
 COLONNES_SHEET = [
     "ID_OT", "Date_Debut", "Date_Fin", "Cadre", "Email_Eleve", "Classe",
-    "Machine", "Type", "Mesures_Elec", "Mesures_Pneu", "Compteur_h",
+    "Machine", "Type", "LMRA", "Mesures_Elec", "Mesures_Pneu", "Compteur_h",
     "Anomalies", "Correction_Effectuee", "Etat_Machine", "Statut"
 ]
 
@@ -52,6 +52,7 @@ def nettoyer_pdf(texte):
         "⏳": "[EN ATTENTE]",
         "✔️": "[VALIDE]",
         "⚠️": "[!]",
+        "→": "->",
         "—": "-",
         "–": "-",
         "’": "'",
@@ -70,7 +71,7 @@ def generer_pdf_ot(ot):
     """Génère un rapport PDF complet sur une page A4 pour le dossier UAA5."""
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=12)
+    pdf.set_auto_page_break(auto=True, margin=10)
 
     email = ot.get("Email_Eleve", "")
     prenom, nom = extraire_identite_email(email)
@@ -95,95 +96,107 @@ def generer_pdf_ot(ot):
     # --- EN-TÊTE ---
     pdf.set_fill_color(27, 54, 93)
     pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 13)
-    pdf.cell(0, 10, nettoyer_pdf("RAPPORT D'INTERVENTION GMAO - MAINTENANCE PREVENTIVE"), ln=True, align="C", fill=True)
-    pdf.set_font("Helvetica", "", 9.5)
-    pdf.cell(0, 6.5, nettoyer_pdf("Option EMI - College Notre-Dame Dinant - Mr PIRET (Referentiel UAA5)"), ln=True, align="C", fill=True)
-    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 12.5)
+    pdf.cell(0, 9.5, nettoyer_pdf("RAPPORT D'INTERVENTION GMAO - MAINTENANCE PREVENTIVE"), ln=True, align="C", fill=True)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.cell(0, 6, nettoyer_pdf("Option EMI - College Notre-Dame Dinant - Mr PIRET (Referentiel UAA5)"), ln=True, align="C", fill=True)
+    pdf.ln(3.5)
 
     # --- BLOC 1 : IDENTIFICATION & HORODATAGE ---
     pdf.set_text_color(27, 54, 93)
-    pdf.set_font("Helvetica", "B", 10.5)
-    pdf.cell(0, 7, nettoyer_pdf(f"1. IDENTIFICATION DE L'INTERVENTION ({ot.get('ID_OT', '')})"), ln=True)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, nettoyer_pdf(f"1. IDENTIFICATION DE L'INTERVENTION ({ot.get('ID_OT', '')})"), ln=True)
     pdf.set_draw_color(27, 54, 93)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(2.5)
+    pdf.ln(2)
 
     pdf.set_text_color(30, 30, 30)
 
     def ligne_double(lbl1, val1, lbl2, val2):
-        pdf.set_font("Helvetica", "B", 9.5)
-        pdf.cell(38, 6.5, nettoyer_pdf(lbl1))
-        pdf.set_font("Helvetica", "", 9.5)
-        pdf.cell(57, 6.5, nettoyer_pdf(val1))
-        pdf.set_font("Helvetica", "B", 9.5)
-        pdf.cell(42, 6.5, nettoyer_pdf(lbl2))
-        pdf.set_font("Helvetica", "", 9.5)
-        pdf.cell(0, 6.5, nettoyer_pdf(val2), ln=True)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(36, 5.5, nettoyer_pdf(lbl1))
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(59, 5.5, nettoyer_pdf(val1))
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.cell(40, 5.5, nettoyer_pdf(lbl2))
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(0, 5.5, nettoyer_pdf(val2), ln=True)
 
     ligne_double("Eleve :", f"{nom_complet} ({ot.get('Classe', '')})", "Cadre pedagogique :", ot.get("Cadre", ""))
     ligne_double("Adresse e-mail :", email, "Equipement :", ot.get("Machine", ""))
     ligne_double("Date :", date_jour, "Compteur horaire :", str(ot.get("Compteur_h", "N/A")))
     ligne_double("Heure de debut :", heure_debut, "Heure de fin :", f"{heure_fin}{duree_txt}")
     ligne_double("Validation prof :", ot.get("Statut", ""), "", "")
-    pdf.ln(3.5)
-
-    # --- BLOC 2 : RELEVÉS MÉTROLOGIQUES ---
-    pdf.set_text_color(27, 54, 93)
-    pdf.set_font("Helvetica", "B", 10.5)
-    pdf.cell(0, 7, nettoyer_pdf("2. RELEVES METROLOGIQUES & CONTROLES TECHNIQUES"), ln=True)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(2.5)
 
-    pdf.set_text_color(30, 30, 30)
-    pdf.set_font("Helvetica", "B", 9.5)
-    pdf.cell(0, 5.5, nettoyer_pdf("Controles electriques et thermiques :"), ln=True)
-    pdf.set_font("Helvetica", "", 9.5)
-    pdf.multi_cell(0, 5.5, nettoyer_pdf(ot.get("Mesures_Elec", "N/A")), border=1)
+    # --- BLOC 2 : SÉCURITÉ / LMRA VOLTA ---
+    pdf.set_text_color(27, 54, 93)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, nettoyer_pdf("2. ANALYSE DES RISQUES DE DERNIERE MINUTE (LMRA - VOLTA)"), ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
     pdf.ln(2)
 
-    pdf.set_font("Helvetica", "B", 9.5)
-    pdf.cell(0, 5.5, nettoyer_pdf("Controles pneumatiques, hydrauliques et mecaniques :"), ln=True)
-    pdf.set_font("Helvetica", "", 9.5)
-    pdf.multi_cell(0, 5.5, nettoyer_pdf(ot.get("Mesures_Pneu", "N/A")), border=1)
-    pdf.ln(4)
-
-    # --- BLOC 3 : DIAGNOSTIC, CORRECTIONS & STATUT FINAL ---
-    pdf.set_text_color(27, 54, 93)
-    pdf.set_font("Helvetica", "B", 10.5)
-    pdf.cell(0, 7, nettoyer_pdf("3. ANOMALIES CONSTATEES, ACTIONS CORRECTIVES & REMISE EN SERVICE"), ln=True)
-    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.set_text_color(30, 30, 30)
+    pdf.set_font("Helvetica", "", 8.8)
+    pdf.multi_cell(0, 5, nettoyer_pdf(ot.get("LMRA", "Non renseignee")), border=1)
     pdf.ln(2.5)
+
+    # --- BLOC 3 : RELEVÉS MÉTROLOGIQUES ---
+    pdf.set_text_color(27, 54, 93)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, nettoyer_pdf("3. RELEVES METROLOGIQUES & CONTROLES TECHNIQUES"), ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(2)
 
     pdf.set_text_color(30, 30, 30)
-    pdf.set_font("Helvetica", "B", 9.5)
-    pdf.cell(0, 5.5, nettoyer_pdf("Anomalie(s) detectee(s) / Pieces a prevoir :"), ln=True)
-    pdf.set_font("Helvetica", "", 9.5)
-    pdf.multi_cell(0, 5.5, nettoyer_pdf(ot.get("Anomalies", "RAS")), border=1)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(0, 4.8, nettoyer_pdf("Controles electriques et thermiques :"), ln=True)
+    pdf.set_font("Helvetica", "", 8.8)
+    pdf.multi_cell(0, 5, nettoyer_pdf(ot.get("Mesures_Elec", "N/A")), border=1)
+    pdf.ln(1.5)
+
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(0, 4.8, nettoyer_pdf("Controles pneumatiques, hydrauliques et mecaniques :"), ln=True)
+    pdf.set_font("Helvetica", "", 8.8)
+    pdf.multi_cell(0, 5, nettoyer_pdf(ot.get("Mesures_Pneu", "N/A")), border=1)
     pdf.ln(2.5)
 
-    pdf.set_font("Helvetica", "B", 9.5)
-    pdf.cell(0, 5.5, nettoyer_pdf("Action(s) corrective(s) realisee(s) sur place :"), ln=True)
-    pdf.set_font("Helvetica", "", 9.5)
-    pdf.multi_cell(0, 5.5, nettoyer_pdf(ot.get("Correction_Effectuee", "Aucune")), border=1)
-    pdf.ln(3.5)
+    # --- BLOC 4 : DIAGNOSTIC, CORRECTIONS & STATUT FINAL ---
+    pdf.set_text_color(27, 54, 93)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 6, nettoyer_pdf("4. ANOMALIES CONSTATEES, ACTIONS CORRECTIVES & REMISE EN SERVICE"), ln=True)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(2)
+
+    pdf.set_text_color(30, 30, 30)
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(0, 4.8, nettoyer_pdf("Anomalie(s) detectee(s) / Pieces a prevoir :"), ln=True)
+    pdf.set_font("Helvetica", "", 8.8)
+    pdf.multi_cell(0, 5, nettoyer_pdf(ot.get("Anomalies", "RAS")), border=1)
+    pdf.ln(1.5)
+
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.cell(0, 4.8, nettoyer_pdf("Action(s) corrective(s) realisee(s) sur place :"), ln=True)
+    pdf.set_font("Helvetica", "", 8.8)
+    pdf.multi_cell(0, 5, nettoyer_pdf(ot.get("Correction_Effectuee", "Aucune")), border=1)
+    pdf.ln(2.5)
 
     pdf.set_fill_color(235, 242, 248)
-    pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(0, 8.5, nettoyer_pdf(f"  STATUT FINAL DE L'EQUIPEMENT : {ot.get('Etat_Machine', '')}"), border=1, ln=True, fill=True)
-    pdf.ln(8)
+    pdf.set_font("Helvetica", "B", 9.5)
+    pdf.cell(0, 7.5, nettoyer_pdf(f"  STATUT FINAL DE L'EQUIPEMENT : {ot.get('Etat_Machine', '')}"), border=1, ln=True, fill=True)
+    pdf.ln(5)
 
     # --- SIGNATURES ---
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.cell(90, 22, nettoyer_pdf(f" Signature de l'eleve ({nom_complet}) :"), border=1, align="L")
-    pdf.cell(10, 22, "", border=0)
-    pdf.cell(90, 22, nettoyer_pdf(" Visa Professeur (Mr Piret) - Dossier UAA5 :"), border=1, align="L")
+    pdf.set_font("Helvetica", "B", 8.5)
+    pdf.cell(90, 19, nettoyer_pdf(f" Signature de l'eleve ({nom_complet}) :"), border=1, align="L")
+    pdf.cell(10, 19, "", border=0)
+    pdf.cell(90, 19, nettoyer_pdf(" Visa Professeur (Mr Piret) - Dossier UAA5 :"), border=1, align="L")
 
     return bytes(pdf.output())
 
 
 # ==============================================================================
-# CONNEXION GOOGLE SHEETS (LECTURE/ÉCRITURE EXACTE SUR COLONNES A:O)
+# CONNEXION GOOGLE SHEETS (LECTURE/ÉCRITURE EXACTE SUR COLONNES A:P)
 # ==============================================================================
 def get_gsheet():
     import gspread
@@ -193,7 +206,7 @@ def get_gsheet():
     client = gspread.authorize(creds)
     sheet = client.open_by_key(SPREADSHEET_ID).sheet1
     if sheet.row_values(1) != COLONNES_SHEET:
-        sheet.update("A1:O1", [COLONNES_SHEET])
+        sheet.update("A1:P1", [COLONNES_SHEET])
     return sheet
 
 
@@ -218,13 +231,13 @@ def charger_donnees():
 
 
 def enregistrer_ot(nouvel_ot, connecte_gsheet):
-    """Écrit le nouvel OT sur la prochaine ligne libre A:O."""
+    """Écrit le nouvel OT sur la prochaine ligne libre A:P."""
     if connecte_gsheet:
         sheet = get_gsheet()
         all_rows = sheet.get_all_values()
         next_row = len(all_rows) + 1
         ligne = [str(nouvel_ot.get(col, "")) for col in COLONNES_SHEET]
-        sheet.update(f"A{next_row}:O{next_row}", [ligne])
+        sheet.update(f"A{next_row}:P{next_row}", [ligne])
     else:
         st.session_state.ordres_travail.append(nouvel_ot)
 
@@ -351,6 +364,7 @@ if menu == "📊 Tableau de bord & Rapports PDF":
                     use_container_width=True
                 )
 
+            st.markdown(f"**🛡️ LMRA VOLTA :** {ot_sel.get('LMRA', 'Non renseignée')}")
             st.divider()
 
             col_m1, col_m2 = st.columns(2)
@@ -383,7 +397,7 @@ if menu == "📊 Tableau de bord & Rapports PDF":
         st.dataframe(df_complet[cols_compactes], use_container_width=True, hide_index=True)
 
 # ==============================================================================
-# VUE 2 : MAINTENANCE PRÉVENTIVE (FICHE UAA5)
+# VUE 2 : MAINTENANCE PRÉVENTIVE (LMRA VOLTA + FICHE UAA5)
 # ==============================================================================
 elif menu == "🛠️ Maintenance Préventive (UAA5)":
     st.header("Fiche d'Activité : Maintenance Préventive (UAA5)")
@@ -391,6 +405,8 @@ elif menu == "🛠️ Maintenance Préventive (UAA5)":
 
     if "heure_debut_ot" not in st.session_state:
         st.session_state.heure_debut_ot = datetime.now().time().replace(second=0, microsecond=0)
+    if "pieges_lmra" not in st.session_state:
+        st.session_state.pieges_lmra = {}
 
     # --- EN-TÊTE IDENTIFICATION ---
     with st.container(border=True):
@@ -409,6 +425,160 @@ elif menu == "🛠️ Maintenance Préventive (UAA5)":
         machine = col_d.selectbox("Équipement / Machine contrôlée", [MACHINE_UAA5])
         compteur_h = col_e.text_input("Compteur horaire (h)", placeholder="Ex: 1450")
         heure_debut_saisie = col_f.time_input("Heure de début", value=st.session_state.heure_debut_ot)
+
+    # ==========================================================================
+    # ÉTAPE PRÉALABLE OBLIGATOIRE : LMRA (MODÈLE VOLTA AVEC DÉTECTION DE PIÈGES)
+    # ==========================================================================
+    with st.container(border=True):
+        st.subheader("🛡️ LMRA — Analyse des Risques de Dernière Minute (VOLTA)")
+        st.caption("Inspectez votre environnement de travail et répondez honnêtement à chaque point. Si une condition n'est pas remplie (NON), corrigez-la puis réévaluez-la à OUI.")
+
+        def question_lmra_ab(label, key):
+            c_q, c_r = st.columns([3.5, 1.5])
+            c_q.markdown(label)
+            rep = c_r.radio(
+                label,
+                ["OUI", "NON"],
+                index=None,
+                horizontal=True,
+                label_visibility="collapsed",
+                key=key
+            )
+            # Si l'élève détecte un problème (NON), on le mémorise pour le dossier
+            if rep == "NON":
+                st.session_state.pieges_lmra[key] = label
+            return rep
+
+        col_lmra_a, col_lmra_b = st.columns(2)
+
+        # --- GROUPE A : CONNAISSANCES / INFORMATIONS ---
+        with col_lmra_a:
+            st.markdown("#### A. Connaissances / Informations")
+            st.caption("Étape 1 : De quelles connaissances et informations ai-je besoin pour réaliser la mission en toute sécurité ?")
+            questions_a = [
+                ("Je connais ma tâche ?", "lmra_a1"),
+                ("Je sais quels EPI je dois porter ?", "lmra_a2"),
+                ("Je connais le contenu des instructions de travail / de la TRA / du permis de travail ?", "lmra_a3"),
+                ("Connaît-on l'endroit où je travaille ?", "lmra_a4"),
+                ("Je sais où se trouvent les douches d'urgence, les extincteurs, les lieux de rassemblement et le chemin d'évacuation ?", "lmra_a5")
+            ]
+            reponses_a = [question_lmra_ab(q, k) for q, k in questions_a]
+            a_valide = all(r == "OUI" for r in reponses_a)
+
+        # --- GROUPE B : CONDITIONS POUR UN TRAVAIL EN TOUTE SÉCURITÉ ---
+        with col_lmra_b:
+            st.markdown("#### B. Conditions pour un travail en toute sécurité")
+            st.caption("Étape 1 : Définissez les conditions nécessaires pour réaliser la tâche en toute sécurité.")
+            questions_b = [
+                ("Mon lieu de travail est-il rangé ?", "lmra_b1"),
+                ("Mes EPI offrent-ils une protection suffisante ?", "lmra_b2"),
+                ("Les conditions climatiques sont-elles adaptées ?", "lmra_b3"),
+                ("Je dispose des bons équipements de travail ?", "lmra_b4"),
+                ("Mon outil est-il en bon état ?", "lmra_b5"),
+                ("Mon lieu de travail est-il suffisamment éclairé ?", "lmra_b6"),
+                ("La partie de l'installation est-elle sécurisée ?", "lmra_b7"),
+                ("Ma zone de travail est-elle délimitée ?", "lmra_b8")
+            ]
+            reponses_b = [question_lmra_ab(q, k) for q, k in questions_b]
+            b_valide = all(r == "OUI" for r in reponses_b)
+
+        # --- BOUCLE ÉTAPE 2 VOLTA : CORRECTION DES PIÈGES DÉTECTÉS ---
+        corrections_pieges_ok = True
+        resume_pieges_corr = []
+
+        if st.session_state.pieges_lmra:
+            st.markdown("---")
+            st.warning("⚠️ **Étape 2 (VOLTA) — Condition(s) non conforme(s) / Piège(s) détecté(s) :** Apportez les corrections nécessaires sur le poste, notez l'action réalisée ci-dessous, puis **réévaluez le point à « OUI »**.")
+            for k_piege, lbl_piege in list(st.session_state.pieges_lmra.items()):
+                col_p1, col_p2 = st.columns([5, 1])
+                with col_p1:
+                    txt_corr = st.text_input(
+                        f"Action corrective réalisée pour : « {lbl_piege} »",
+                        placeholder="Ex: J'ai rallumé l'éclairage de l'atelier / J'ai balisé la zone / J'ai mis mes EPI.",
+                        key=f"corr_{k_piege}"
+                    )
+                with col_p2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("↩️ Annuler", key=f"del_{k_piege}", help="Supprimer si erreur de clic"):
+                        del st.session_state.pieges_lmra[k_piege]
+                        st.rerun()
+
+                if not txt_corr.strip():
+                    corrections_pieges_ok = False
+                else:
+                    resume_pieges_corr.append(f"{lbl_piege.replace(' ?', '')} -> Corrigé : {txt_corr.strip()}")
+
+        st.markdown("---")
+        # --- GROUPE C : RISQUES ---
+        st.markdown("#### C. Risques présents pendant les travaux")
+        st.caption("Étape 1 : Quels risques sont (restent) présents pendant les travaux ?")
+        questions_c = [
+            ("Existe-t-il un danger de trébuchement ?", "lmra_c1"),
+            ("Y a-t-il un danger de chute d'objet ?", "lmra_c2"),
+            ("Y a-t-il un danger de chute en cas de travail en hauteur ?", "lmra_c3"),
+            ("Y a-t-il un risque d'électrocution ?", "lmra_c4"),
+            ("Y a-t-il un risque d'explosion ?", "lmra_c5"),
+            ("Une exposition à des substances dangereuses est-elle possible ?", "lmra_c6"),
+            ("Est-il possible de se faire mal et/ou de se cogner ?", "lmra_c7"),
+            ("Y a-t-il un danger pour l'environnement ?", "lmra_c8")
+        ]
+
+        col_c1, col_c2 = st.columns(2)
+        risques_presents = []
+        reponses_c = []
+        for idx, (q, k) in enumerate(questions_c):
+            target_col = col_c1 if idx < 4 else col_c2
+            with target_col:
+                c_q, c_r = st.columns([3.5, 1.5])
+                c_q.markdown(q)
+                rep_c = c_r.radio(
+                    q,
+                    ["OUI", "NON"],
+                    index=None,
+                    horizontal=True,
+                    label_visibility="collapsed",
+                    key=k
+                )
+                reponses_c.append(rep_c)
+                if rep_c == "OUI":
+                    risques_presents.append(q.replace(" ?", ""))
+
+        c_tous_repondus = all(r in ["OUI", "NON"] for r in reponses_c)
+        mesures_lmra_c = ""
+        c_valide = c_tous_repondus
+
+        if risques_presents:
+            st.warning(f"⚠️ **Étape 2 (Groupe C) — Risque(s) identifié(s) :** {', '.join(risques_presents)}")
+            mesures_lmra_c = st.text_input(
+                "Déterminez et appliquez les mesures adaptées pour supprimer ou limiter ces risques :",
+                placeholder="Ex: Consignation électrique + VAT effectuée, balisage de la zone et rangement des câbles au sol."
+            )
+            risques_maitrises = st.checkbox(
+                "Je confirme que les mesures nécessaires sont prises et que tous les risques repris en C disparaissent ou sont suffisamment évités."
+            )
+            c_valide = c_tous_repondus and bool(mesures_lmra_c.strip()) and risques_maitrises
+
+        lmra_complete = a_valide and b_valide and corrections_pieges_ok and c_valide
+
+        # --- FEU VERT PROFESSEUR (SI PIÈGE NON CORRIGEABLE PAR L'ÉLÈVE) ---
+        feu_vert_prof = False
+        if not lmra_complete:
+            with st.expander("🔑 Feu vert Professeur (Déblocage PIN si condition bloquante)"):
+                pin_lmra = st.text_input("Code PIN Mr Piret pour autoriser le démarrage", type="password", key="pin_lmra_override")
+                if pin_lmra == CODE_PIN_PROF:
+                    feu_vert_prof = True
+                    st.success("Feu vert professeur accordé.")
+                elif pin_lmra:
+                    st.error("Code PIN incorrect.")
+
+    # ==========================================================================
+    # VERROU DE SÉCURITÉ : ACCÈS À LA GAMME PRÉVENTIVE UNIQUEMENT SI LMRA OK
+    # ==========================================================================
+    if not (lmra_complete or feu_vert_prof):
+        st.error("🛑 **INTERVENTION BLOQUÉE (LMRA VOLTA INCOMPLÈTE)** : Répondez à toutes les questions A, B et C. Si vous avez détecté une anomalie (NON), corrigez-la sur le poste, notez l'action réalisée et réévaluez le point à « OUI ».")
+        st.stop()
+
+    st.success("✅ **LMRA VOLTA VALIDÉE** — Vous êtes autorisé à démarrer la gamme de maintenance préventive.")
 
     def ligne_gamme(label, key):
         c_lbl, c_btn = st.columns([3, 2])
@@ -556,6 +726,16 @@ elif menu == "🛠️ Maintenance Préventive (UAA5)":
                 maintenant = datetime.now()
                 dt_debut_complet = datetime.combine(maintenant.date(), heure_debut_saisie)
 
+                # Synthèse LMRA complète (incluant pièges détectés/corrigés & risques C)
+                morceaux_lmra = ["Validée" if lmra_complete else "Feu vert Prof (PIN)"]
+                if resume_pieges_corr:
+                    morceaux_lmra.append("Condition(s) corrigée(s) : " + " ; ".join(resume_pieges_corr))
+                if risques_presents:
+                    morceaux_lmra.append(f"Risques C : {', '.join(risques_presents)} -> Mesures : {mesures_lmra_c.strip()}")
+                else:
+                    morceaux_lmra.append("Risques C : Aucun")
+                resume_lmra = " | ".join(morceaux_lmra)
+
                 # Regroupement complet des anomalies cochées + diagnostic texte
                 liste_anom_pdf = []
                 if anomalies_detectees:
@@ -586,6 +766,7 @@ elif menu == "🛠️ Maintenance Préventive (UAA5)":
                     "Classe": classe,
                     "Machine": machine,
                     "Type": "Maintenance Préventive",
+                    "LMRA": resume_lmra,
                     "Mesures_Elec": f"L1-L2:{u_l1l2}V | L2-L3:{u_l2l3}V | L3-L1:{u_l3l1}V | 24V:{u_24v}V | T°:{t_armoire}°C (Th:{t_thermostat}°C) | HMI:{defauts_hmi}",
                     "Mesures_Pneu": mesures_pneu_meca,
                     "Compteur_h": f"{compteur_h} h" if compteur_h else "N/A",
@@ -596,6 +777,7 @@ elif menu == "🛠️ Maintenance Préventive (UAA5)":
                 }
                 enregistrer_ot(nouvel_ot, mode_gsheet)
                 st.session_state.heure_debut_ot = datetime.now().time().replace(second=0, microsecond=0)
+                st.session_state.pieges_lmra = {}
                 st.success(f"Rapport **{nouvel_id}** enregistré ({etat_machine_final}) ! Appelez Mr Piret pour validation.")
 
 # ==============================================================================
@@ -633,6 +815,7 @@ elif menu == "🔐 Validation Professeur":
                     with c1:
                         st.markdown(f"### {ot['ID_OT']} — {p_val} {n_val} (`{ot['Cadre']}`)")
                         st.write(f"**E-mail :** {ot['Email_Eleve']} ({ot['Classe']}) | **Début :** {ot.get('Date_Debut', '')} | **Fin :** {ot.get('Date_Fin', '')}")
+                        st.write(f"**LMRA VOLTA :** {ot.get('LMRA', 'N/A')}")
                         st.write(f"**Élec/Thermique :** {ot['Mesures_Elec']}")
                         st.write(f"**Pneumatique/Méca :** {ot['Mesures_Pneu']} | **Compteur :** {ot['Compteur_h']}")
                         st.write(f"**Anomalie(s) détectée(s) :** {ot.get('Anomalies', 'RAS')}")
