@@ -16,6 +16,12 @@ CODE_PIN_PROF = "1234"  # <-- Modifiez votre code secret professeur ici
 SPREADSHEET_ID = "1oD2UwgkRhyqv9tRd3DMcF3Y20deMAa3Y8hoKgHJ5AB8"
 MACHINE_UAA5 = "Course de canards (UAA5-CANARDS-01)"
 
+COLONNES_SHEET = [
+    "ID_OT", "Date", "Cadre", "Email_Eleve", "Classe", "Machine",
+    "Type", "Mesures_Elec", "Mesures_Pneu", "Compteur_h",
+    "Anomalies", "Correction_Effectuee", "Etat_Machine", "Statut"
+]
+
 # ==============================================================================
 # CONNEXION GOOGLE SHEETS (AVEC REPLI EN MÉMOIRE LOCALE)
 # ==============================================================================
@@ -35,22 +41,7 @@ def charger_donnees():
             st.sidebar.warning(f"Mode hors-ligne actif (Erreur Sheets : {e})")
 
     if "ordres_travail" not in st.session_state:
-        st.session_state.ordres_travail = [
-            {
-                "ID_OT": "OT-2026-001",
-                "Date": "2026-11-23 09:15",
-                "Cadre": "Formatif (Entraînement)",
-                "Email_Eleve": "dupont.martin@ecole.be",
-                "Classe": "6TQ",
-                "Machine": MACHINE_UAA5,
-                "Type": "Maintenance Préventive",
-                "Mesures_Elec": "L1-L2:401V | L2-L3:400V | L3-L1:402V | 24V:24.1V | T°:22°C",
-                "Mesures_Pneu": "Réseau:6.5 bar | FRL:6.0 bar | Purge:Oui",
-                "Compteur_h": "1420 h",
-                "Anomalies": "RAS - Filtre armoire dépoussiéré",
-                "Statut": "⏳ En attente validation prof"
-            }
-        ]
+        st.session_state.ordres_travail = []
     return st.session_state.ordres_travail, False
 
 
@@ -63,7 +54,8 @@ def enregistrer_ot(nouvel_ot, connecte_gsheet):
         creds = Credentials.from_service_account_info(st.secrets["gsheets"], scopes=scopes)
         client = gspread.authorize(creds)
         sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-        sheet.append_row(list(nouvel_ot.values()))
+        ligne = [nouvel_ot.get(col, "") for col in COLONNES_SHEET]
+        sheet.append_row(ligne)
     else:
         st.session_state.ordres_travail.append(nouvel_ot)
 
@@ -78,9 +70,10 @@ def valider_ot_gsheet(id_ot, connecte_gsheet):
         client = gspread.authorize(creds)
         sheet = client.open_by_key(SPREADSHEET_ID).sheet1
         cell = sheet.find(id_ot)
-        if cell:
-            # La colonne Statut est la 12e colonne (L)
-            sheet.update_cell(cell.row, 12, "🟢 Validé par Prof")
+        headers = sheet.row_values(1)
+        if cell and "Statut" in headers:
+            col_statut = headers.index("Statut") + 1
+            sheet.update_cell(cell.row, col_statut, "🟢 Validé par Prof")
     else:
         for ot in st.session_state.ordres_travail:
             if ot["ID_OT"] == id_ot:
@@ -88,6 +81,17 @@ def valider_ot_gsheet(id_ot, connecte_gsheet):
 
 
 ordres_travail, mode_gsheet = charger_donnees()
+
+# Détermination dynamique de l'état actuel de la machine selon le dernier OT
+etat_actuel_machine = "🟢 Opérationnel"
+if ordres_travail:
+    dernier_etat = str(ordres_travail[-1].get("Etat_Machine", ""))
+    if "Hors service" in dernier_etat:
+        etat_actuel_machine = "🔴 Hors service / Consigné"
+    elif "réserve" in dernier_etat:
+        etat_actuel_machine = "🟠 Opérationnel (Réserve)"
+    else:
+        etat_actuel_machine = "🟢 Opérationnel"
 
 # ==============================================================================
 # BARRE LATÉRALE : NAVIGATION & ÉTAT DU PARC
@@ -114,7 +118,8 @@ with st.sidebar:
 
     st.divider()
     st.subheader("Équipement UAA5")
-    st.markdown("🟢 **UAA5-CANARDS-01** : Course de canards")
+    st.markdown(f"**UAA5-CANARDS-01** : Course de canards")
+    st.markdown(f"État actuel : **{etat_actuel_machine}**")
 
 # ==============================================================================
 # VUE 1 : TABLEAU DE BORD & REGISTRE DES ORDRES DE TRAVAIL
@@ -125,16 +130,16 @@ if menu == "📊 Tableau de bord & Parc":
     nb_total = len(ordres_travail)
     nb_attente = sum(1 for x in ordres_travail if "attente" in str(x.get("Statut", "")))
     nb_valides = sum(1 for x in ordres_travail if "Validé" in str(x.get("Statut", "")))
-    nb_formatif = sum(1 for x in ordres_travail if "Formatif" in str(x.get("Cadre", "")))
+    nb_corrigees = sum(1 for x in ordres_travail if "corrigée" in str(x.get("Etat_Machine", "")))
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Ordres de Travail (Total)", nb_total)
     c2.metric("En attente validation prof", nb_attente)
     c3.metric("OT Validés", nb_valides)
-    c4.metric("Interventions Formatives", nb_formatif)
+    c4.metric("Anomalies détectées & corrigées", nb_corrigees)
 
     st.divider()
-    st.subheader("📋 Historique des interventions (Registre GMAO)")
+    st.subheader("📋 Historique des interventions & traçabilité des anomalies")
     if ordres_travail:
         df = pd.DataFrame(ordres_travail)
         st.dataframe(df, use_container_width=True, hide_index=True)
@@ -253,24 +258,52 @@ elif menu == "🛠️ Maintenance Préventive (UAA5)":
 
         pieces_remp = st.text_input("Composants remplacés (Réf + Qté)", placeholder="Ex: Aucune ou Filtre armoire (x1)")
 
-    # --- ANOMALIES & SOUMISSION ---
+    # --- BILAN : ANOMALIES, CORRECTION & STATUT FINAL ---
     with st.container(border=True):
-        st.subheader("📝 Rapport d'intervention")
-        if anomalies_detectees:
-            st.error(f"⚠️ {len(anomalies_detectees)} point(s) en anomalie : {', '.join(anomalies_detectees)}")
+        st.subheader("📝 Bilan d'intervention, Correction & Remise en service")
 
-        anomalies_txt = st.text_area(
-            "ANOMALIES CONSTATÉES / PIÈCES À PRÉVOIR",
-            placeholder="Notez ici les anomalies détectées, les pièces à prévoir ou vos remarques techniques..."
+        if anomalies_detectees:
+            st.warning(f"⚠️ **{len(anomalies_detectees)} anomalie(s) détectée(s) durant le contrôle :** {', '.join(anomalies_detectees)}")
+            st.info("Décrivez ci-dessous l'anomalie constatée puis l'action corrective que vous avez réalisée pour remettre l'équipement en service.")
+
+        col_anom, col_corr = st.columns(2)
+        with col_anom:
+            anomalies_txt = st.text_area(
+                "1. ANOMALIES CONSTATÉES / PIÈCES À PRÉVOIR",
+                placeholder="Ex: Capteur optique S2 encrassé et désaligné + pression FRL à 4,5 bar au lieu de 6 bar."
+            )
+        with col_corr:
+            correction_txt = st.text_area(
+                "2. ACTION CORRECTIVE RÉALISÉE SUR PLACE",
+                placeholder="Ex: Nettoyage et réalignement du capteur S2 + réglage du régulateur FRL à 6,0 bar. Essai fonctionnel OK."
+            )
+
+        options_etat = [
+            "🟢 Opérationnel (Aucune anomalie)",
+            "🟢 Opérationnel (Anomalie(s) détectée(s) et corrigée(s))",
+            "🟠 Opérationnel avec réserve (Pièce à prévoir)",
+            "🔴 Hors service / Consigné (Anomalie non résolue)"
+        ]
+        index_defaut = 1 if anomalies_detectees else 0
+        etat_machine_final = st.selectbox(
+            "3. STATUT FINAL DE L'ÉQUIPEMENT APRÈS INTERVENTION",
+            options_etat,
+            index=index_defaut
         )
 
-        if st.button("✅ Enregistrer le rapport GMAO (Demande validation professeur)", type="primary", use_container_width=True):
+        if st.button("✅ Clôturer l'intervention et demander la validation professeur", type="primary", use_container_width=True):
             if not email_eleve or "@" not in email_eleve:
                 st.warning("Veuillez entrer votre adresse e-mail scolaire valide.")
-            elif anomalies_detectees and not anomalies_txt.strip():
-                st.error("Vous avez signalé une anomalie dans la gamme : veuillez obligatoirement la décrire ci-dessus.")
+            elif (anomalies_detectees or "corrigée" in etat_machine_final or "réserve" in etat_machine_final or "Hors service" in etat_machine_final) and not anomalies_txt.strip():
+                st.error("Veuillez décrire l'anomalie constatée dans la case 1.")
+            elif ("corrigée" in etat_machine_final) and not correction_txt.strip():
+                st.error("Vous avez indiqué que l'anomalie a été corrigée : décrivez obligatoirement l'action corrective effectuée dans la case 2.")
             else:
                 nouvel_id = f"OT-2026-{len(ordres_travail) + 1:03d}"
+                resume_anomalies = anomalies_txt.strip() if anomalies_txt.strip() else "RAS"
+                if anomalies_detectees:
+                    resume_anomalies = f"[{', '.join(anomalies_detectees)}] {resume_anomalies}"
+
                 nouvel_ot = {
                     "ID_OT": nouvel_id,
                     "Date": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -282,11 +315,13 @@ elif menu == "🛠️ Maintenance Préventive (UAA5)":
                     "Mesures_Elec": f"L1-L2:{u_l1l2}V | L2-L3:{u_l2l3}V | L3-L1:{u_l3l1}V | 24V:{u_24v}V | T°:{t_armoire}°C (Th:{t_thermostat}°C) | HMI:{defauts_hmi}",
                     "Mesures_Pneu": f"Réseau:{p_reseau} bar | FRL:{p_frl} bar | Purge:{purge_ok}",
                     "Compteur_h": f"{compteur_h} h" if compteur_h else "N/A",
-                    "Anomalies": anomalies_txt.strip() if anomalies_txt.strip() else "RAS",
+                    "Anomalies": resume_anomalies,
+                    "Correction_Effectuee": correction_txt.strip() if correction_txt.strip() else "Aucune (RAS)",
+                    "Etat_Machine": etat_machine_final,
                     "Statut": "⏳ En attente validation prof"
                 }
                 enregistrer_ot(nouvel_ot, mode_gsheet)
-                st.success(f"Rapport **{nouvel_id}** enregistré avec succès ! Présentez votre poste à Mr Piret pour validation.")
+                st.success(f"Rapport **{nouvel_id}** enregistré ({etat_machine_final}) ! Appelez Mr Piret pour validation.")
 
 # ==============================================================================
 # VUES EN ATTENTE : CURATIF & RÉALISATION
@@ -321,7 +356,9 @@ elif menu == "🔐 Validation Professeur":
                         st.write(f"**Élève :** {ot['Email_Eleve']} ({ot['Classe']}) | **Date :** {ot['Date']}")
                         st.write(f"**Élec/Thermique :** {ot['Mesures_Elec']}")
                         st.write(f"**Pneumatique :** {ot['Mesures_Pneu']} | **Compteur :** {ot['Compteur_h']}")
-                        st.write(f"**Anomalies / Pièces :** {ot['Anomalies']}")
+                        st.write(f"**Anomalie(s) détectée(s) :** {ot.get('Anomalies', 'RAS')}")
+                        st.write(f"**Action corrective réalisée :** {ot.get('Correction_Effectuee', 'Aucune')}")
+                        st.write(f"**État final déclaré :** {ot.get('Etat_Machine', 'N/A')}")
                     with c2:
                         if st.button("✔️ Valider (Prof)", key=f"btn_{ot['ID_OT']}", type="primary", use_container_width=True):
                             valider_ot_gsheet(ot["ID_OT"], mode_gsheet)
