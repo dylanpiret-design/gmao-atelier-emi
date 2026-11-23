@@ -15,6 +15,7 @@ st.set_page_config(
 
 CODE_PIN_PROF = "1234"  # <-- Modifiez votre code secret professeur ici
 SPREADSHEET_ID = "1oD2UwgkRhyqv9tRd3DMcF3Y20deMAa3Y8hoKgHJ5AB8"
+SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit"
 MACHINE_UAA5 = "Course de canards (UAA5-CANARDS-01)"
 
 COLONNES_SHEET = [
@@ -135,7 +136,6 @@ def generer_pdf_ot(ot):
     pdf.ln(10)
 
     # Encadrés de signatures pour le dossier papier
-    y_sig = pdf.get_y()
     pdf.set_font("Helvetica", "B", 9)
     pdf.cell(90, 22, nettoyer_pdf(" Signature de l'eleve :"), border=1, align="L")
     pdf.cell(10, 22, "", border=0)
@@ -145,19 +145,31 @@ def generer_pdf_ot(ot):
 
 
 # ==============================================================================
-# CONNEXION GOOGLE SHEETS (AVEC REPLI EN MÉMOIRE LOCALE)
+# CONNEXION GOOGLE SHEETS (LECTURE/ÉCRITURE EXACTE SUR COLONNES A:N)
 # ==============================================================================
+def get_gsheet():
+    import gspread
+    from google.oauth2.service_account import Credentials
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_info(st.secrets["gsheets"], scopes=scopes)
+    client = gspread.authorize(creds)
+    sheet = client.open_by_key(SPREADSHEET_ID).sheet1
+    if sheet.row_values(1) != COLONNES_SHEET:
+        sheet.update("A1:N1", [COLONNES_SHEET])
+    return sheet
+
+
 def charger_donnees():
-    """Charge les OT depuis Google Sheets si configuré, sinon utilise la session."""
+    """Charge toutes les lignes non vides depuis Google Sheets."""
     if "gsheets" in st.secrets:
         try:
-            import gspread
-            from google.oauth2.service_account import Credentials
-            scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-            creds = Credentials.from_service_account_info(st.secrets["gsheets"], scopes=scopes)
-            client = gspread.authorize(creds)
-            sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-            records = sheet.get_all_records()
+            sheet = get_gsheet()
+            all_rows = sheet.get_all_values()
+            records = []
+            for row in all_rows[1:]:
+                if any(cell.strip() for cell in row):
+                    padded = row + [""] * (len(COLONNES_SHEET) - len(row))
+                    records.append(dict(zip(COLONNES_SHEET, padded[:len(COLONNES_SHEET)])))
             return records, True
         except Exception as e:
             st.sidebar.warning(f"Mode hors-ligne actif (Erreur Sheets : {e})")
@@ -168,34 +180,27 @@ def charger_donnees():
 
 
 def enregistrer_ot(nouvel_ot, connecte_gsheet):
-    """Ajoute un nouvel Ordre de Travail dans Google Sheets ou en session."""
+    """Écrit le nouvel OT sur la prochaine ligne libre A:N (sans décalage possible)."""
     if connecte_gsheet:
-        import gspread
-        from google.oauth2.service_account import Credentials
-        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-        creds = Credentials.from_service_account_info(st.secrets["gsheets"], scopes=scopes)
-        client = gspread.authorize(creds)
-        sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-        ligne = [nouvel_ot.get(col, "") for col in COLONNES_SHEET]
-        sheet.append_row(ligne)
+        sheet = get_gsheet()
+        all_rows = sheet.get_all_values()
+        next_row = len(all_rows) + 1
+        ligne = [str(nouvel_ot.get(col, "")) for col in COLONNES_SHEET]
+        sheet.update(f"A{next_row}:N{next_row}", [ligne])
     else:
         st.session_state.ordres_travail.append(nouvel_ot)
 
 
 def valider_ot_gsheet(id_ot, connecte_gsheet):
-    """Met à jour le statut de validation professeur."""
+    """Met à jour le statut de validation professeur sur la ligne correspondante."""
     if connecte_gsheet:
-        import gspread
-        from google.oauth2.service_account import Credentials
-        scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-        creds = Credentials.from_service_account_info(st.secrets["gsheets"], scopes=scopes)
-        client = gspread.authorize(creds)
-        sheet = client.open_by_key(SPREADSHEET_ID).sheet1
-        cell = sheet.find(id_ot)
-        headers = sheet.row_values(1)
-        if cell and "Statut" in headers:
-            col_statut = headers.index("Statut") + 1
-            sheet.update_cell(cell.row, col_statut, "🟢 Validé par Prof")
+        sheet = get_gsheet()
+        all_rows = sheet.get_all_values()
+        col_statut = COLONNES_SHEET.index("Statut") + 1
+        for idx, row in enumerate(all_rows):
+            if idx > 0 and len(row) > 0 and row[0].strip() == id_ot:
+                sheet.update_cell(idx + 1, col_statut, "🟢 Validé par Prof")
+                break
     else:
         for ot in st.session_state.ordres_travail:
             if ot["ID_OT"] == id_ot:
@@ -247,7 +252,11 @@ with st.sidebar:
 # VUE 1 : TABLEAU DE BORD & CONSULTATION / EXPORT PDF DES OT
 # ==============================================================================
 if menu == "📊 Tableau de bord & Rapports PDF":
-    st.header("Tableau de bord de maintenance — Course de canards")
+    head_l, head_r1, head_r2 = st.columns([4, 1, 1])
+    head_l.header("Tableau de bord de maintenance — Course de canards")
+    if head_r1.button("🔄 Actualiser", use_container_width=True):
+        st.rerun()
+    head_r2.link_button("📊 Google Sheet", SHEET_URL, use_container_width=True)
 
     nb_total = len(ordres_travail)
     nb_attente = sum(1 for x in ordres_travail if "attente" in str(x.get("Statut", "")))
@@ -265,14 +274,13 @@ if menu == "📊 Tableau de bord & Rapports PDF":
     if not ordres_travail:
         st.info("Aucun Ordre de Travail enregistré pour le moment.")
     else:
-        # 1. FICHE DÉTAILLÉE & EXPORT PDF (SANS ASCENSEUR HORIZONTAL)
+        # 1. FICHE DÉTAILLÉE & EXPORT PDF
         st.subheader("📄 Consulter ou imprimer une fiche d'intervention (Dossier UAA5)")
 
         options_ot = [
-            f"{ot.get('ID_OT', '')} — {ot.get('Email_Eleve', '')} ({ot.get('Date', '')}) [{ot.get('Statut', '')}]"
+            f"{ot.get('ID_OT', 'Sans ID')} — {ot.get('Email_Eleve', 'Inconnu')} ({ot.get('Date', '')}) [{ot.get('Statut', '')}]"
             for ot in ordres_travail
         ]
-        # Sélectionne automatiquement l'intervention la plus récente
         choix_index = st.selectbox(
             "Sélectionnez l'intervention à afficher :",
             range(len(options_ot)),
@@ -292,7 +300,7 @@ if menu == "📊 Tableau de bord & Rapports PDF":
                 )
             with top_r:
                 pdf_bytes = generer_pdf_ot(ot_sel)
-                nom_fichier = f"{ot_sel.get('ID_OT', 'OT')}_{ot_sel.get('Email_Eleve', 'eleve').split('@')[0]}.pdf"
+                nom_fichier = f"{ot_sel.get('ID_OT', 'OT')}_{str(ot_sel.get('Email_Eleve', 'eleve')).split('@')[0]}.pdf"
                 st.download_button(
                     label="📄 Télécharger PDF (UAA5)",
                     data=pdf_bytes,
@@ -328,7 +336,7 @@ if menu == "📊 Tableau de bord & Rapports PDF":
 
         st.divider()
 
-        # 2. VUE SYNTHÉTIQUE COMPACTE (TIENS SUR L'ÉCRAN SANS SCROLL)
+        # 2. VUE SYNTHÉTIQUE COMPACTE
         st.subheader("📋 Liste synthétique des interventions")
         df_complet = pd.DataFrame(ordres_travail)
         cols_compactes = [c for c in ["ID_OT", "Date", "Email_Eleve", "Classe", "Cadre", "Statut"] if c in df_complet.columns]
@@ -487,7 +495,15 @@ elif menu == "🛠️ Maintenance Préventive (UAA5)":
             elif ("corrigée" in etat_machine_final) and not correction_txt.strip():
                 st.error("Vous avez indiqué que l'anomalie a été corrigée : décrivez obligatoirement l'action corrective effectuée dans la case 2.")
             else:
-                nouvel_id = f"OT-2026-{len(ordres_travail) + 1:03d}"
+                donnees_fraiches, _ = charger_donnees()
+                numeros_existants = []
+                for x in donnees_fraiches:
+                    parts = str(x.get("ID_OT", "")).split("-")
+                    if len(parts) == 3 and parts[2].isdigit():
+                        numeros_existants.append(int(parts[2]))
+                prochain_num = (max(numeros_existants) + 1) if numeros_existants else 1
+                nouvel_id = f"OT-2026-{prochain_num:03d}"
+
                 resume_anomalies = anomalies_txt.strip() if anomalies_txt.strip() else "RAS"
                 if anomalies_detectees:
                     resume_anomalies = f"[{', '.join(anomalies_detectees)}] {resume_anomalies}"
